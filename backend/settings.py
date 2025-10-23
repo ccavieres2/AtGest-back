@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     "accounts",
     "orders",
     "inventory",
+    "externalService",
 ]
 
 MIDDLEWARE = [
@@ -161,3 +162,7 @@ SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),  # o 30, 60, etc.
     "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
 }
+
+
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"

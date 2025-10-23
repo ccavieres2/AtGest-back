@@ -16,6 +16,8 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
+from django.conf import settings
+from django.conf.urls.static import static
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -23,4 +25,5 @@ urlpatterns = [
     path("api/", include("orders.urls")),    # 👈 agrega esto
     path("api/", include("payments.urls")),
     path("api/", include("inventory.urls")),
-]
+    path("api/", include("externalService.urls")),
+] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
