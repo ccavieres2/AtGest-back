@@ -1,3 +1,4 @@
+# atgest-back/orders/serializers.py
 from rest_framework import serializers
 from .models import Order
 
@@ -6,5 +7,6 @@ class OrderSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Order
-        fields = ["id", "client", "vehicle", "service", "status", "owner", "created_at", "updated_at"]
+        # Usamos "__all__" para incluir automáticamente todos los campos del modelo
+        fields = "__all__"
         read_only_fields = ["id", "owner", "created_at", "updated_at"]
