@@ -12,4 +12,3 @@
 
 `python manage.py runserver 8000`
 
-`python -m pip install Pillow"`
