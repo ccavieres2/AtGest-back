@@ -9,21 +9,28 @@ https://docs.djangoproject.com/en/5.2/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
-
+from datetime import timedelta
 from pathlib import Path
+import os 
+from dotenv import load_dotenv # 👈 Importa la librería que instalamos
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# 🔽 AQUÍ ESTÁ LA MAGIA 🔽
+# Carga las variables de entorno desde el archivo .env
+env_path = BASE_DIR / '.env'
+load_dotenv(dotenv_path=env_path)
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-%iwo_i4r!^mrqaffxzq&!b^%69a2cb%$ay8d+)-8@$l+3blfl8'
+SECRET_KEY = os.environ.get('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
 ALLOWED_HOSTS = []
 
@@ -45,6 +52,7 @@ INSTALLED_APPS = [
     "orders",
     "inventory",
     "externalService",
+    "payments.apps.PaymentsConfig",
 ]
 
 MIDDLEWARE = [
@@ -148,15 +156,17 @@ REST_FRAMEWORK = {
     ],
 }
 
+# --- ⬇️ REEMPLAZA TU SECCIÓN DE PAYPAL POR ESTA ⬇️ ---
 
-import os
+# Ahora lee las claves de PayPal desde el .env
+PAYPAL_CLIENT_ID = os.environ.get('PAYPAL_CLIENT_ID')
+PAYPAL_CLIENT_SECRET = os.environ.get('PAYPAL_CLIENT_SECRET')
 
-PAYPAL_CLIENT_ID = os.environ.get('ARNLQty-QSuZUf-bdbJJRyqJ83XmpkaDs7CW7ItnM_545A9RsnHW4r2766FN8jkUXp3F3jFAs3uT2bEz')
-PAYPAL_CLIENT_SECRET = os.environ.get('EE1Fo_EM8dw4kIQ_pOeTvhXqviN7ROpTgiSufrFqRvnkEaOW2QeOU7pI3r482t96X39f4-udXQK7sPnN')
 # Define si estás en modo sandbox o producción
-PAYPAL_API_BASE = 'https://api-m.sandbox.paypal.com' if os.environ.get('PAYPAL_MODE') == 'sandbox' else 'https://api-m.paypal.com'
+PAYPAL_MODE = os.environ.get('PAYPAL_MODE', 'sandbox') # Usará 'sandbox' si no lo encuentra
+PAYPAL_API_BASE = 'https://api-m.sandbox.paypal.com' if PAYPAL_MODE == 'sandbox' else 'https://api-m.paypal.com'
 
-from datetime import timedelta
+# --- ⬆️ FIN DE LA SECCIÓN DE PAYPAL ⬆️ ---
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),  # o 30, 60, etc.
