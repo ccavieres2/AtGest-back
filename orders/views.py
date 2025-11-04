@@ -1,20 +1,22 @@
 # atgest-back/orders/views.py
 from rest_framework import viewsets, permissions, status
-from rest_framework.decorators import action # 👈 1. Importar 'action'
-from rest_framework.response import Response # 👈 1. Importar 'Response'
-from .models import Order, OrderItem        # 👈 1. Importar OrderItem
-from inventory.models import InventoryItem  # 👈 1. Importar InventoryItem
-from .serializers import OrderSerializer, OrderItemSerializer # 👈 1. Importar OrderItemSerializer
+from rest_framework.decorators import action 
+from rest_framework.response import Response 
+from .models import Order, OrderItem, ExternalServiceBooking # 👈 1. Importar ExternalServiceBooking
+from inventory.models import InventoryItem  
+from externalService.models import ExternalService # 👈 2. Importar ExternalService
+from .serializers import OrderSerializer, OrderItemSerializer, ExternalServiceBookingSerializer # 👈 3. Importar Serializers
 from django.shortcuts import get_object_or_404
-from django.db import transaction # 👈 1. Importar 'transaction'
+from django.db import transaction 
 
 class IsOwner(permissions.BasePermission):
     def has_object_permission(self, request, view, obj):
-        # Si el objeto es una Orden, comprueba el dueño
         if isinstance(obj, Order):
             return obj.owner == request.user
-        # Si es un OrderItem, comprueba que seas dueño de la orden principal
         if isinstance(obj, OrderItem):
+            return obj.order.owner == request.user
+        # 👈 4. AÑADIDO: Permiso para el nuevo modelo
+        if isinstance(obj, ExternalServiceBooking):
             return obj.order.owner == request.user
         return False
 
@@ -23,19 +25,21 @@ class OrderViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated, IsOwner]
 
     def get_queryset(self):
-        # Solo ver tus órdenes
-        # 👈 2. 'prefetch_related' optimiza la consulta de items anidados
-        return Order.objects.filter(owner=self.request.user).prefetch_related('order_items', 'order_items__item')
+        # 👈 5. MODIFICADO: prefetch_related optimiza AMBAS relaciones
+        return Order.objects.filter(owner=self.request.user).prefetch_related(
+            'order_items', 'order_items__item', 
+            'service_bookings_through', 'service_bookings_through__service'
+        )
 
     def perform_create(self, serializer):
         serializer.save(owner=self.request.user)
     
     
-    # --- ⭐️ NUEVO: Endpoint para añadir item a la orden ⭐️ ---
+    # --- Endpoint para añadir item a la orden ---
     @action(detail=True, methods=['post'], url_path='add-item')
-    @transaction.atomic # 👈 Si algo falla (ej: no hay stock), revierte toda la operación
+    @transaction.atomic 
     def add_item(self, request, pk=None):
-        order = self.get_object() # Obtiene la orden (ej: /orders/10/...)
+        order = self.get_object() 
         
         # 1. Obtener datos del request
         item_id = request.data.get('item_id')
@@ -50,28 +54,73 @@ class OrderViewSet(viewsets.ModelViewSet):
         # 3. Verificar Stock
         if item.quantity < quantity:
             return Response({"error": f"Stock insuficiente para '{item.name}'. Disponible: {item.quantity}"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # 4. Verificar estado de la orden (¡NUEVO!)
+        if order.status not in [Order.STATUS_PENDING, Order.STATUS_AWAITING_APPROVAL]:
+            return Response({"error": "Solo se pueden agregar ítems a órdenes pendientes o esperando aprobación."}, status=status.HTTP_400_BAD_REQUEST)
             
-        # 4. Restar Stock
+        # 5. Restar Stock
         item.quantity -= quantity
         item.save()
         
-        # 5. Crear o actualizar el OrderItem
-        # Usamos get_or_create por si el item ya estaba en la orden
+        # 6. Crear o actualizar el OrderItem
         order_item, created = OrderItem.objects.get_or_create(
             order=order,
             item=item,
-            # Si se crea, se usa este precio. Si ya existía, no se actualiza.
             defaults={'price_at_time_of_sale': item.price, 'quantity': quantity}
         )
         
-        # Si no fue creado (ya existía), actualizamos la cantidad
         if not created:
             order_item.quantity += quantity
-            # Opcional: ¿actualizar el precio al más nuevo? Decidamos que no.
-            # order_item.price_at_time_of_sale = item.price 
             order_item.save()
 
-        # 6. Responder con el item creado/actualizado
-        serializer = OrderItemSerializer(order_item)
+        # 7. Responder con la orden completa
+        # (El costo total se recalcula automáticamente por la propiedad del modelo)
+        serializer = OrderSerializer(order)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
-    # --- ----------------------------------------------- ---
+    
+    
+    # --- 👈 6. NUEVO: Endpoint para añadir servicio externo a la orden ⭐️ ---
+    @action(detail=True, methods=['post'], url_path='add-service')
+    @transaction.atomic
+    def add_service(self, request, pk=None):
+        order = self.get_object() # Obtiene la orden (ej: /orders/10/...)
+        
+        # 1. Obtener datos del request
+        service_id = request.data.get('service_id')
+        start_time = request.data.get('start_time')
+        end_time = request.data.get('end_time')
+
+        if not service_id or not start_time or not end_time:
+            return Response({"error": "Se requiere 'service_id', 'start_time' y 'end_time'"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 2. Obtener el servicio externo
+        service = get_object_or_404(ExternalService, pk=service_id)
+
+        # 3. Verificar estado de la orden
+        if order.status not in [Order.STATUS_PENDING, Order.STATUS_AWAITING_APPROVAL]:
+            return Response({"error": "Solo se pueden agregar servicios a órdenes pendientes o esperando aprobación."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 4. (Opcional) Validar que el horario sea válido
+        # ... (Aquí podrías añadir lógica para verificar que el start/end time
+        # ... realmente existe en service.available_hours y no está ocupado)
+        
+        # 5. Crear la reserva (Booking)
+        try:
+            booking = ExternalServiceBooking.objects.create(
+                order=order,
+                service=service,
+                title_at_booking=service.title,
+                price_at_booking=service.price,
+                start_time=start_time, # Django parseará el string ISO
+                end_time=end_time
+            )
+        except Exception as e:
+            # Captura error si, por ejemplo, 'unique_together' falla
+            return Response({"error": f"No se pudo agendar la reserva. ¿Quizás ya existe? ({str(e)})"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 6. Responder con la orden actualizada
+        # (El costo total se recalcula automáticamente por la propiedad del modelo)
+        serializer = OrderSerializer(order)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    # --- ----------------------------------------------------------------- ---

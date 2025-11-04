@@ -1,12 +1,19 @@
 # atgest-back/orders/admin.py
 from django.contrib import admin
-from .models import Order, OrderItem # 👈 1. Importar OrderItem
+from .models import Order, OrderItem, ExternalServiceBooking # 👈 1. Importar ExternalServiceBooking
 
-# ⭐️ NUEVO: Un 'inline' para ver/agregar productos dentro de la página de la Orden ⭐️
+# Inline para Items de Inventario
 class OrderItemInline(admin.TabularInline):
     model = OrderItem
-    extra = 1 # Cuántos campos vacíos mostrar
-    autocomplete_fields = ['item'] # Asume que tienes búsqueda en el admin de inventario
+    extra = 0 # Cambiado a 0 para no saturar
+    autocomplete_fields = ['item'] 
+
+# 👈 2. NUEVO: Inline para Servicios Externos
+class ExternalServiceBookingInline(admin.TabularInline):
+    model = ExternalServiceBooking
+    extra = 0 # Cuántos campos vacíos mostrar
+    autocomplete_fields = ['service'] # Asume que tienes búsqueda en el admin de ExternalService
+    readonly_fields = ['title_at_booking', 'price_at_booking'] # Estos se llenan solos
 
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
@@ -29,4 +36,5 @@ class OrderAdmin(admin.ModelAdmin):
         "vehicle_vin",
         "service_title"
     )
-    inlines = [OrderItemInline] # 👈 2. Añadir el inline aquí
+    # 👈 3. Añadir el nuevo inline aquí
+    inlines = [OrderItemInline, ExternalServiceBookingInline]

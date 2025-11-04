@@ -2,7 +2,8 @@
 from django.db import models
 from django.contrib.auth import get_user_model
 from decimal import Decimal
-from inventory.models import InventoryItem # 👈 1. Importa el modelo de inventario
+from inventory.models import InventoryItem
+from externalService.models import ExternalService # 👈 1. Importar ExternalService
 
 User = get_user_model()
 
@@ -60,13 +61,20 @@ class Order(models.Model):
     estimated_cost = models.DecimalField("Costo Estimado", max_digits=10, decimal_places=2, default=0)
     final_cost = models.DecimalField("Costo Final (Mano de Obra)", max_digits=10, decimal_places=2, null=True, blank=True)
 
-    # --- ⭐️ NUEVO: Relación con productos de inventario ⭐️ ---
+    # --- Relación con productos de inventario ---
     items = models.ManyToManyField(
         InventoryItem,
         through='OrderItem', # Usamos el modelo intermedio
         related_name='orders'
     )
-    # --- ------------------------------------------------ ---
+    
+    # --- 👈 2. NUEVA: Relación con servicios externos ---
+    service_bookings = models.ManyToManyField(
+        ExternalService,
+        through='ExternalServiceBooking', # Usamos el nuevo modelo intermedio
+        related_name='orders'
+    )
+    # --- -------------------------------------------- ---
 
 
     class Meta:
@@ -75,11 +83,11 @@ class Order(models.Model):
     def __str__(self):
         return f"{self.client_name} - {self.vehicle_model} ({self.get_status_display()})"
         
-    # ⭐️ NUEVO: Propiedad para calcular el total
+    # 👈 3. MODIFICADO: Propiedad para calcular el total
     @property
     def total_cost(self):
         # Suma el costo final (mano de obra)
-        total = self.final_cost if self.final_cost else 0
+        total = self.final_cost if self.final_cost else Decimal('0.0')
         
         # Suma el costo de todos los items
         items_cost = self.order_items.aggregate(
@@ -88,21 +96,25 @@ class Order(models.Model):
         
         if items_cost:
             total += items_cost
+            
+        # 👈 4. NUEVO: Sumar el costo de los servicios externos
+        services_cost = self.service_bookings_through.aggregate(
+            total=models.Sum('price_at_booking')
+        )['total']
+        
+        if services_cost:
+            total += services_cost
+            
         return total
 
 
-# --- ⭐️ NUEVO: Modelo Intermedio (Junction Table) ⭐️ ---
+# --- Modelo Intermedio (Inventario) ---
 class OrderItem(models.Model):
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="order_items")
     item = models.ForeignKey(InventoryItem, on_delete=models.SET_NULL, null=True, related_name="order_items")
     
-    # Cuántos de este item se usaron en esta orden
     quantity = models.PositiveIntegerField(default=1)
-    
-    # ❗️ MUY IMPORTANTE: Guardamos el precio al momento de la venta
-    # Así, si el precio del producto cambia en el inventario, no afecta a esta orden.
     price_at_time_of_sale = models.DecimalField(max_digits=10, decimal_places=2)
-    
     added_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -110,6 +122,28 @@ class OrderItem(models.Model):
         return f"{self.quantity} x {item_name} (en Orden #{self.order.id})"
 
     class Meta:
-        # Evita que se agregue el mismo producto dos veces a la misma orden
-        # Es mejor editar la cantidad si ya existe.
         unique_together = ('order', 'item')
+
+
+# --- 👈 5. NUEVO: Modelo Intermedio (Servicios Externos) ---
+class ExternalServiceBooking(models.Model):
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="service_bookings_through")
+    service = models.ForeignKey(ExternalService, on_delete=models.SET_NULL, null=True, related_name="bookings")
+    
+    # Guardamos "snapshots" de los datos al momento de la reserva
+    title_at_booking = models.CharField(max_length=255)
+    price_at_booking = models.DecimalField(max_digits=10, decimal_places=2)
+    
+    # El horario que el usuario seleccionó
+    start_time = models.DateTimeField()
+    end_time = models.DateTimeField()
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['start_time']
+        # Evitar que se agende el mismo servicio a la misma hora en la misma orden
+        unique_together = ('order', 'service', 'start_time')
+
+    def __str__(self):
+        return f"Booking for '{self.title_at_booking}' in Order {self.order.id}"
