@@ -31,3 +31,7 @@ dist/
 # Archivos de Django
 /staticfiles/
 media/
+
+**/migrations/
+!**/migrations/__init__.py
+
