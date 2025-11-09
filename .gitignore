@@ -1,0 +1,33 @@
+# Archivos y carpetas de Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Archivos de entorno
+#.env
+venv/
+env/
+
+# Archivos de base de datos y migraciones automáticas (opcional)
+*.sqlite3
+
+# Archivos de configuración del sistema
+.DS_Store
+Thumbs.db
+
+# Archivos de logs
+*.log
+
+# Archivos compilados
+*.egg-info/
+build/
+dist/
+
+# Archivos de IDEs
+.vscode/
+.idea/
+
+# Archivos de Django
+#/staticfiles/
+#media/
