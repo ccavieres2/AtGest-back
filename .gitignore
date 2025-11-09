@@ -5,7 +5,7 @@ __pycache__/
 *.pyd
 
 # Archivos de entorno
-#.env
+.env
 venv/
 env/
 
@@ -29,5 +29,5 @@ dist/
 .idea/
 
 # Archivos de Django
-#/staticfiles/
-#media/
+/staticfiles/
+media/
