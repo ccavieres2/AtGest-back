@@ -5,7 +5,6 @@ __pycache__/
 *.pyd
 
 # Archivos de entorno
-.env
 venv/
 env/
 
