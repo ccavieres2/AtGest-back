@@ -8,12 +8,12 @@ from django.views.decorators.csrf import csrf_exempt
 from django.db import transaction
 from django.contrib.auth.models import User
 from django.core.mail import send_mail
-import threading  # 👈 --- 1. IMPORTA threading ---
+import threading 
 
 from accounts.serializers import RegisterSerializer
 from .models import UserPayment
+from accounts.models import UserProfile  # 👈 NUEVO: Importar el modelo de perfil
 
-# ... (Las funciones get_paypal_access_token y capture_paypal_payment no cambian) ...
 def get_paypal_access_token():
     auth = (settings.PAYPAL_CLIENT_ID, settings.PAYPAL_CLIENT_SECRET)
     headers = {'Accept': 'application/json', 'Accept-Language': 'en_US'}
@@ -33,8 +33,6 @@ def capture_paypal_payment(order_id, access_token):
     response = requests.post(capture_url, headers=headers)
     return response.json(), response.status_code
 
-
-# 👈 --- 2. CREA UNA FUNCIÓN PARA ENVIAR EL CORREO ---
 def send_welcome_email_async(user, payment_obj):
     """
     Función que se ejecutará en un hilo separado para no bloquear la respuesta.
@@ -69,16 +67,12 @@ def send_welcome_email_async(user, payment_obj):
         print(f"Email de bienvenida enviado exitosamente a {user.email}")
         
     except Exception as email_error:
-        # Como esto corre en segundo plano, el print es nuestra única forma
-        # de saber si falló (o usar logging).
         print(f"ERROR ASÍNCRONO al enviar email de bienvenida a {user.email}: {str(email_error)}")
 
 
-# --- 3. VISTA: REGISTRAR Y PAGAR (Modificada) ---
 @csrf_exempt
 @transaction.atomic
 def register_and_pay(request):
-    # ... (El inicio de la función no cambia) ...
     if request.method != "POST":
         return JsonResponse({"error": "Método no permitido"}, status=405)
     try:
@@ -91,11 +85,12 @@ def register_and_pay(request):
         return JsonResponse({"error": "JSON inválido"}, status=400)
 
     # --- PASO A: Capturar el pago ---
-    # ... (Sin cambios) ...
     access_token = get_paypal_access_token()
     if not access_token:
         return JsonResponse({"error": "No se pudo autenticar con PayPal"}, status=500)
+    
     response_data, status_code = capture_paypal_payment(paypal_order_id, access_token)
+    
     if status_code not in (200, 201) or response_data.get('status') != 'COMPLETED':
         return JsonResponse({
             "error": "El pago no pudo ser completado. No se creó el usuario.", 
@@ -107,6 +102,14 @@ def register_and_pay(request):
     if serializer.is_valid():
         try:
             user = serializer.save()
+            
+            # 🔽🔽🔽 AQUÍ ESTÁ LO NUEVO 🔽🔽🔽
+            # Garantizamos que quien se registra pagando es un DUEÑO (Owner)
+            UserProfile.objects.get_or_create(
+                user=user, 
+                defaults={'role': 'owner'}
+            )
+            # 🔼🔼🔼 FIN DE LO NUEVO 🔼🔼🔼
             
             # --- PASO C: Guardar el recibo del pago ---
             payment_obj = None
@@ -126,20 +129,17 @@ def register_and_pay(request):
                     "details": response_data
                 }, status=500)
 
-            # --- ⭐️ PASO D: Enviar email (AHORA ASÍNCRONO) ⭐️ ---
+            # --- PASO D: Enviar email (ASÍNCRONO) ---
             if user and payment_obj:
-                # 👈 --- 3. INICIA LA FUNCIÓN EN UN HILO SEPARADO ---
                 email_thread = threading.Thread(
                     target=send_welcome_email_async, 
                     args=(user, payment_obj)
                 )
-                email_thread.start() # 👈 Esto se ejecuta instantáneamente
+                email_thread.start()
 
-            # --- PASO E: Todo exitoso (Respuesta al frontend) ---
-            # 👈 Esta respuesta ahora es INMEDIATA. No espera el correo.
+            # --- PASO E: Todo exitoso ---
             return JsonResponse({"message": "¡Usuario registrado y pago completado!", "username": user.username}, status=201)
         
-        # ... (El resto de los 'except' y 'else' no cambian) ...
         except Exception as e:
              return JsonResponse({
                 "error": "El pago fue exitoso, pero el registro falló. (¿Usuario o email ya existen?)", 
@@ -152,9 +152,7 @@ def register_and_pay(request):
         }, status=400)
 
 
-# --- 4. VISTA ANTIGUA: CAPTURAR ORDEN (Sin cambios) ---
 def capture_paypal_order(request, order_id):
-    # ... (Sin cambios) ...
     if request.method != "POST":
         return JsonResponse({"error": "Método no permitido"}, status=405)
     access_token = get_paypal_access_token()

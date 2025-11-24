@@ -2,7 +2,6 @@
 
 from rest_framework import serializers
 from .models import ExternalService
-from orders.models import ExternalServiceBooking # 👈 1. Importar el modelo de reservas
 
 class ExternalServiceSerializer(serializers.ModelSerializer):
     owner = serializers.ReadOnlyField(source='owner.username')
