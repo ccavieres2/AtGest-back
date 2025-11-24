@@ -45,6 +45,8 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     # Terceros
+    'clients',
+    'evaluations', # 👈 NUEVO
     "rest_framework",
     "corsheaders",
     # Local

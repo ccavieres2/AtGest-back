@@ -112,7 +112,7 @@ class CreateMechanicView(APIView):
         phone = data.get("phone", "") # 👈 2. RECIBIR EL TELÉFONO
 
         # ... (validaciones existentes) ...
-        if not username or not password or not email or not role:
+        if not username or not password or not email or not role or not phone:
              return Response({"error": "Faltan datos obligatorios"}, status=400)
              
         allowed_roles = ['mechanic', 'assistant', 'admin']

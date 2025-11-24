@@ -13,7 +13,7 @@ class UserProfile(models.Model):
     role = models.CharField(max_length=20, choices=ROLES, default='owner')
     
     # 👇 NUEVO CAMPO
-    phone = models.CharField(max_length=20, blank=True, null=True)
+    phone = models.CharField(max_length=20)
     
     employer = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='employees')
 
