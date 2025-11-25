@@ -1,8 +1,8 @@
-from django.shortcuts import render
 # evaluations/views.py
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.exceptions import ValidationError # 👈 Importar esto
 from .models import Evaluation, EvaluationItem
 from .serializers import EvaluationSerializer, EvaluationItemSerializer
 from accounts.utils import get_data_owner
@@ -17,16 +17,29 @@ class EvaluationViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         target_user = get_data_owner(self.request.user)
+        vehicle = serializer.validated_data['vehicle']
+
+        # 👇 VALIDACIÓN: Verificar si ya existe evaluación activa para este auto
+        # Consideramos "activa" cualquier estado excepto 'rejected' (o los que tú definas como finalizados)
+        active_statuses = ['draft', 'sent', 'approved'] 
+        
+        exists = Evaluation.objects.filter(
+            vehicle=vehicle, 
+            status__in=active_statuses
+        ).exists()
+
+        if exists:
+            raise ValidationError({"vehicle": "Este vehículo ya tiene una evaluación en curso."})
+        # 👆 FIN VALIDACIÓN
+
         serializer.save(owner=target_user)
 
-    # Acción extra para gestionar los items del checklist en bloque
+    # ... (El resto del archivo, método update_items, sigue igual) ...
     @action(detail=True, methods=['post'])
     def update_items(self, request, pk=None):
         evaluation = self.get_object()
         items_data = request.data.get('items', [])
         
-        # Borramos items anteriores y creamos los nuevos (estrategia simple de reemplazo)
-        # O puedes hacer lógica de actualización, pero reemplazar es más fácil para checklists.
         EvaluationItem.objects.filter(evaluation=evaluation).delete()
         
         new_items = []
