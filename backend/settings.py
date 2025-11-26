@@ -52,7 +52,6 @@ INSTALLED_APPS = [
     # Local
     "accounts",
     "inventory",
-    "externalService",
     "payments.apps.PaymentsConfig",
 ]
 
