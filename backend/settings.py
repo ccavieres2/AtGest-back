@@ -172,8 +172,9 @@ PAYPAL_API_BASE = 'https://api-m.sandbox.paypal.com' if PAYPAL_MODE == 'sandbox'
 # --- ⬆️ FIN DE LA SECCIÓN DE PAYPAL ⬆️ ---
 
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),  # o 30, 60, etc.
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
+    # Antes tenías minutes=15, cámbialo por días o semanas
+    "ACCESS_TOKEN_LIFETIME": timedelta(days=365),  # 👈 Ahora la sesión dura 1 año
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=365), # 👈 El refresh también
 }
 
 # --- Configuración de Email ---
