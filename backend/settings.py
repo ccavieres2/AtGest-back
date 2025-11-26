@@ -52,6 +52,7 @@ INSTALLED_APPS = [
     # Local
     "accounts",
     "inventory",
+    'external',  # 👈 AGREGAR ESTO
     "payments.apps.PaymentsConfig",
 ]
 
