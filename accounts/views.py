@@ -5,9 +5,10 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, permissions
 from rest_framework_simplejwt.tokens import RefreshToken
-from .serializers import RegisterSerializer  # ya lo tienes
+from .serializers import RegisterSerializer
 from .models import UserProfile
 from django.shortcuts import get_object_or_404
+from .utils import get_data_owner  # 👈 IMPORTANTE: Importar la utilidad corregida
 
 User = get_user_model()
 
@@ -47,8 +48,7 @@ class LoginView(APIView):
 
         refresh = RefreshToken.for_user(user_auth)
         
-        # 👇 OBTENER ROL DE FORMA SEGURA
-        role = 'owner' # Default por seguridad
+        role = 'owner'
         if hasattr(user_auth, 'profile'):
             role = user_auth.profile.role
 
@@ -57,7 +57,7 @@ class LoginView(APIView):
             "refresh": str(refresh),
             "username": user_auth.username,
             "email": user_auth.email,
-            "role": role, # 👈 ENVIAMOS EL ROL AL FRONTEND
+            "role": role,
         }, status=status.HTTP_200_OK)
 
 class MeView(APIView):
@@ -65,7 +65,6 @@ class MeView(APIView):
 
     def get(self, request):
         u = request.user
-        # 👇 OBTENER ROL DE FORMA SEGURA
         role = 'owner'
         if hasattr(u, 'profile'):
             role = u.profile.role
@@ -74,17 +73,21 @@ class MeView(APIView):
             "id": u.id,
             "username": u.username,
             "email": u.email,
-            "role": role, # 👈 ENVIAMOS EL ROL TAMBIÉN AQUÍ
+            "role": role,
         })
 
 class CreateMechanicView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        if not hasattr(request.user, 'profile') or request.user.profile.role != 'owner':
-             return Response({"error": "Acceso denegado."}, status=403)
-
-        profiles = UserProfile.objects.filter(employer=request.user).select_related('user')
+        # --- CORRECCIÓN IMPLEMENTADA AQUÍ ---
+        # Usamos get_data_owner para obtener al "jefe" real.
+        # Si el usuario es mecánico, target_user será su jefe.
+        # Si el usuario es dueño, target_user será él mismo.
+        target_user = get_data_owner(request.user)
+        
+        # Filtramos los perfiles que trabajan para ese jefe
+        profiles = UserProfile.objects.filter(employer=target_user).select_related('user')
         
         data = []
         for p in profiles:
@@ -92,7 +95,7 @@ class CreateMechanicView(APIView):
                 "id": p.user.id,
                 "username": p.user.username,
                 "email": p.user.email,
-                "phone": p.phone,  # 👈 1. AGREGAR ESTO
+                "phone": p.phone,
                 "date_joined": p.user.date_joined,
                 "role": p.get_role_display()
             })
@@ -100,7 +103,7 @@ class CreateMechanicView(APIView):
         return Response(data, status=200)
 
     def post(self, request):
-        # ... (validaciones de dueño) ...
+        # Para CREAR (POST), mantenemos la restricción estricta: SOLO DUEÑOS
         if not hasattr(request.user, 'profile') or request.user.profile.role != 'owner':
              return Response({"error": "Solo los dueños pueden registrar personal."}, status=403)
 
@@ -109,9 +112,8 @@ class CreateMechanicView(APIView):
         email = data.get("email")
         role = data.get("role")
         password = data.get("password")
-        phone = data.get("phone", "") # 👈 2. RECIBIR EL TELÉFONO
+        phone = data.get("phone", "")
 
-        # ... (validaciones existentes) ...
         if not username or not password or not email or not role or not phone:
              return Response({"error": "Faltan datos obligatorios"}, status=400)
              
@@ -129,7 +131,7 @@ class CreateMechanicView(APIView):
                 user=user,
                 defaults={
                     'role': role,
-                    'phone': phone, # 👈 3. GUARDARLO AQUÍ
+                    'phone': phone,
                     'employer': request.user
                 }
             )
@@ -140,11 +142,10 @@ class CreateMechanicView(APIView):
 
 
 class MechanicDetailView(APIView):
-    # ... (método get_employee igual) ...
     permission_classes = [permissions.IsAuthenticated]
 
     def get_employee(self, request, pk):
-        # (Copia el mismo helper de la respuesta anterior)
+        # Solo el dueño puede editar/borrar a sus empleados
         if not hasattr(request.user, 'profile') or request.user.profile.role != 'owner': return None
         employee = get_object_or_404(User, pk=pk)
         if not hasattr(employee, 'profile') or employee.profile.employer != request.user: return None
@@ -165,13 +166,11 @@ class MechanicDetailView(APIView):
         try:
             employee.save()
             
-            # Actualizar Perfil
             profile_updated = False
             if 'role' in data:
                 employee.profile.role = data['role']
                 profile_updated = True
             
-            # 👈 4. ACTUALIZAR TELÉFONO
             if 'phone' in data:
                 employee.profile.phone = data['phone']
                 profile_updated = True
@@ -183,7 +182,6 @@ class MechanicDetailView(APIView):
         except Exception as e:
             return Response({"error": str(e)}, status=400)
 
-    # ... (delete igual) ...
     def delete(self, request, pk):
         employee = self.get_employee(request, pk)
         if not employee: return Response({"error": "Error."}, status=403)
