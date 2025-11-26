@@ -44,15 +44,14 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    # Terceros
     'clients',
-    'evaluations', # 👈 NUEVO
+    'evaluations',
     "rest_framework",
     "corsheaders",
-    # Local
     "accounts",
     "inventory",
-    'external',  # 👈 AGREGAR ESTO
+    'external',
+    'orders',
     "payments.apps.PaymentsConfig",
 ]
 

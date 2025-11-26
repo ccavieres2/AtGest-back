@@ -27,4 +27,5 @@ urlpatterns = [
     path("api/", include("clients.urls")), # 👈 NUEVO
     path("api/", include("external.urls")), # 👈 AGREGAR ESTO
     path("api/", include("evaluations.urls")),
+    path("api/", include("orders.urls")), # 👈 NUEVO
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
