@@ -118,3 +118,4 @@ class DashboardStatsView(APIView):
             "pie_data": list(orders_by_status),
             "bar_data": revenue_chart_data
         })
+        
