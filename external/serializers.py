@@ -26,3 +26,13 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
             'created_at', 
             'related_order_id'
         ]
+        
+from .models import Message # 👈 Importa Message
+
+class MessageSerializer(serializers.ModelSerializer):
+    sender_username = serializers.CharField(source='sender.username', read_only=True)
+    
+    class Meta:
+        model = Message
+        fields = ['id', 'service_request', 'sender', 'sender_username', 'content', 'created_at']
+        read_only_fields = ['sender', 'created_at']
