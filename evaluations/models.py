@@ -2,6 +2,7 @@
 from django.db import models
 from django.conf import settings
 from clients.models import Client, Vehicle
+from external.models import ExternalService # 👈 Importante: Importamos el modelo externo
 
 class Evaluation(models.Model):
     STATUS_CHOICES = [
@@ -32,6 +33,15 @@ class EvaluationItem(models.Model):
     
     # El "Check": si el cliente aprueba este ítem para reparación
     is_approved = models.BooleanField(default=True, verbose_name="Aprobado por cliente")
+    
+    # 👇 NUEVO CAMPO: Vincula este ítem a un servicio del mercado
+    external_service_source = models.ForeignKey(
+        ExternalService, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name="linked_items"
+    )
 
     def __str__(self):
         return self.description

@@ -1,8 +1,12 @@
 # external/views.py
-from rest_framework import viewsets, permissions
-from rest_framework.exceptions import PermissionDenied
-from .models import ExternalService
-from .serializers import ExternalServiceSerializer
+from rest_framework import viewsets, permissions, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.exceptions import PermissionDenied # 👈 Faltaba esta importación
+from django.db.models import Q
+
+from .models import ExternalService, ServiceRequest
+from .serializers import ExternalServiceSerializer, ServiceRequestSerializer
 from accounts.utils import get_data_owner
 
 # Permiso personalizado mejorado
@@ -44,3 +48,37 @@ class ExternalServiceViewSet(viewsets.ModelViewSet):
             
         target_user = get_data_owner(self.request.user)
         serializer.save(owner=target_user)
+
+# 👇 NUEVO VIEWSET PARA SOLICITUDES B2B
+class ServiceRequestViewSet(viewsets.ModelViewSet):
+    serializer_class = ServiceRequestSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        target_user = get_data_owner(self.request.user)
+        # Muestra solicitudes enviadas (requester) O recibidas (provider)
+        return ServiceRequest.objects.filter(
+            Q(requester=target_user) | Q(provider=target_user)
+        ).order_by('-created_at')
+
+    @action(detail=True, methods=['post'])
+    def respond(self, request, pk=None):
+        """
+        Endpoint para que el proveedor (Carlos) acepte o rechace el trabajo.
+        """
+        service_req = self.get_object()
+        target_user = get_data_owner(request.user)
+
+        # Validación de seguridad: Solo el proveedor puede responder
+        if service_req.provider != target_user:
+            return Response({"error": "No tienes permiso para gestionar esta solicitud."}, status=status.HTTP_403_FORBIDDEN)
+
+        new_status = request.data.get('status')
+        
+        # Validación de estados permitidos
+        if new_status not in ['accepted', 'rejected', 'completed']:
+             return Response({"error": "Estado no válido."}, status=status.HTTP_400_BAD_REQUEST)
+
+        service_req.status = new_status
+        service_req.save()
+        return Response({"status": "updated", "new_status": new_status})
