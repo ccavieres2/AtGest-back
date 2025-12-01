@@ -303,3 +303,21 @@ class ResetPasswordConfirmView(APIView):
         user.save()
 
         return Response({"message": "Contraseña restablecida con éxito. Ya puedes iniciar sesión."}, status=200)
+    
+    
+from .models import Notification
+from .serializers import NotificationSerializer
+
+class NotificationListView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        # Obtener notificaciones del usuario actual (no leídas primero)
+        notifs = Notification.objects.filter(recipient=request.user).order_by('is_read', '-created_at')[:20]
+        serializer = NotificationSerializer(notifs, many=True)
+        return Response(serializer.data)
+
+    def put(self, request):
+        # Marcar todas como leídas
+        Notification.objects.filter(recipient=request.user, is_read=False).update(is_read=True)
+        return Response({"status": "marked as read"})

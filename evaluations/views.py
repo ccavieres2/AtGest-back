@@ -9,6 +9,7 @@ from .models import Evaluation, EvaluationItem
 from .serializers import EvaluationSerializer, EvaluationItemSerializer
 from orders.models import WorkOrder
 from external.models import ServiceRequest  # 👈 Importante para el módulo B2B
+from accounts.models import Notification    # 👈 NUEVO: Importar modelo de Notificación
 from accounts.utils import get_data_owner
 
 class EvaluationViewSet(viewsets.ModelViewSet):
@@ -97,13 +98,23 @@ class EvaluationViewSet(viewsets.ModelViewSet):
                 # Recorremos los ítems aprobados para ver si alguno es un servicio externo
                 for item in approved_items:
                     if item.external_service_source:
+                        service = item.external_service_source
+                        
                         # Si tiene un servicio externo vinculado, creamos la solicitud para el otro taller
                         ServiceRequest.objects.create(
                             requester=evaluation.owner,               # Quien pide (Tu usuario/Ivan)
-                            provider=item.external_service_source.owner, # Quien provee (El otro taller/Carlos)
-                            service=item.external_service_source,     # El servicio específico
+                            provider=service.owner,                   # Quien provee (El otro taller/Carlos)
+                            service=service,                          # El servicio específico
                             related_order_id=work_order.id            # Referencia a la OT
                         )
+
+                        # 👇👇 NUEVO: Crear la Notificación para el Proveedor 👇👇
+                        Notification.objects.create(
+                            recipient=service.owner, # El dueño del servicio externo (Carlos)
+                            message=f"¡Nueva Solicitud! Taller {evaluation.owner.username} requiere: {service.name}",
+                            link="/requests" # Para que al hacer clic vaya a la bandeja de entrada
+                        )
+                        # 👆👆 FIN DE LO NUEVO 👆👆
 
             return Response({
                 "message": "Orden creada y solicitudes enviadas correctamente", 
