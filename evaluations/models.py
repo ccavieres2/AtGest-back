@@ -13,7 +13,17 @@ class Evaluation(models.Model):
     ]
 
     # Relaciones
-    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE) # El taller
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE) # El taller (Dueño)
+    
+    # 👇 NUEVO CAMPO: Quién creó el registro (Empleado o Dueño)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name="created_evaluations"
+    )
+
     client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name="evaluations")
     vehicle = models.ForeignKey(Vehicle, on_delete=models.CASCADE, related_name="evaluations")
     

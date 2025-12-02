@@ -6,8 +6,8 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
 
-from .models import ExternalService, ServiceRequest, Message # 👈 Importar Message
-from .serializers import ExternalServiceSerializer, ServiceRequestSerializer, MessageSerializer # 👈 Importar MessageSerializer
+from .models import ExternalService, ServiceRequest, Message 
+from .serializers import ExternalServiceSerializer, ServiceRequestSerializer, MessageSerializer 
 from accounts.utils import get_data_owner
 
 # ... (IsOwnerOrReadOnly se mantiene igual) ...
@@ -24,13 +24,26 @@ class IsOwnerOrReadOnly(permissions.BasePermission):
             return True
         return obj.owner == get_data_owner(request.user)
 
-# ... (ExternalServiceViewSet se mantiene igual) ...
+# ... (ExternalServiceViewSet CON LA NUEVA INTEGRACIÓN) ...
 class ExternalServiceViewSet(viewsets.ModelViewSet):
     serializer_class = ExternalServiceSerializer
     permission_classes = [IsOwnerOrReadOnly]
 
     def get_queryset(self):
-        return ExternalService.objects.all().order_by('-created_at')
+        # 1. Obtener todos los servicios base ordenados
+        queryset = ExternalService.objects.all().order_by('-created_at')
+
+        # 2. Verificamos si el frontend pide excluir los servicios propios (Modo Contratar)
+        exclude_self = self.request.query_params.get('exclude_self')
+        
+        if exclude_self == 'true':
+            # Obtenemos al "Dueño real" (Si es Juan, obtiene a Iván)
+            target_user = get_data_owner(self.request.user)
+            
+            # Excluimos los servicios que pertenezcan a ese jefe para que no se auto-contraten
+            queryset = queryset.exclude(owner=target_user)
+
+        return queryset
 
     def perform_create(self, serializer):
         if not hasattr(self.request.user, 'profile') or self.request.user.profile.role != 'owner':
@@ -65,7 +78,7 @@ class ServiceRequestViewSet(viewsets.ModelViewSet):
         service_req.save()
         return Response({"status": "updated", "new_status": new_status})
 
-# 👇 AQUÍ ESTABA EL ERROR: CORRECCIÓN DEL MESSAGE VIEWSET
+# ... (MessageViewSet se mantiene igual) ...
 class MessageViewSet(viewsets.ModelViewSet):
     serializer_class = MessageSerializer
     permission_classes = [permissions.IsAuthenticated]

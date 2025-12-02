@@ -22,6 +22,7 @@ class EvaluationViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         target_user = get_data_owner(self.request.user)
+        
         # Validación básica para no duplicar evaluaciones activas
         vehicle = serializer.validated_data.get('vehicle')
         if vehicle:
@@ -33,7 +34,8 @@ class EvaluationViewSet(viewsets.ModelViewSet):
             if exists:
                 raise ValidationError({"vehicle": "Este vehículo ya tiene una evaluación en curso."})
         
-        serializer.save(owner=target_user)
+        # 👇 MODIFICADO: Guardamos 'owner' como el jefe y 'created_by' como el usuario actual
+        serializer.save(owner=target_user, created_by=self.request.user)
 
     @action(detail=True, methods=['post'])
     def update_items(self, request, pk=None):
