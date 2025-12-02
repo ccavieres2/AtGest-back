@@ -2,7 +2,8 @@
 from django.db import models
 from django.conf import settings
 from clients.models import Client, Vehicle
-from external.models import ExternalService # 👈 Importante: Importamos el modelo externo
+from external.models import ExternalService
+from inventory.models import InventoryItem  # 👈 Importamos el modelo de inventario
 
 class Evaluation(models.Model):
     STATUS_CHOICES = [
@@ -13,9 +14,9 @@ class Evaluation(models.Model):
     ]
 
     # Relaciones
-    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE) # El taller (Dueño)
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     
-    # 👇 NUEVO CAMPO: Quién creó el registro (Empleado o Dueño)
+    # Quién creó el registro (Empleado o Dueño)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, 
         on_delete=models.SET_NULL, 
@@ -41,10 +42,10 @@ class EvaluationItem(models.Model):
     description = models.CharField(max_length=255, verbose_name="Descripción del problema/repuesto")
     price = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name="Costo estimado")
     
-    # El "Check": si el cliente aprueba este ítem para reparación
+    # Si el cliente aprueba este ítem
     is_approved = models.BooleanField(default=True, verbose_name="Aprobado por cliente")
     
-    # 👇 NUEVO CAMPO: Vincula este ítem a un servicio del mercado
+    # Vinculación con servicio externo
     external_service_source = models.ForeignKey(
         ExternalService, 
         on_delete=models.SET_NULL, 
@@ -52,6 +53,16 @@ class EvaluationItem(models.Model):
         blank=True,
         related_name="linked_items"
     )
+
+    # 👇 NUEVOS CAMPOS PARA INVENTARIO
+    inventory_item = models.ForeignKey(
+        InventoryItem, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name="evaluation_items"
+    )
+    quantity = models.PositiveIntegerField(default=1, verbose_name="Cantidad")
 
     def __str__(self):
         return self.description

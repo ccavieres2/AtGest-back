@@ -1,7 +1,6 @@
-# core/models.py
+# inventory/models.py
 from django.db import models
 from django.conf import settings
-
 
 class InventoryItem(models.Model):
     STATUS_CHOICES = [
@@ -14,10 +13,9 @@ class InventoryItem(models.Model):
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="inventory_items",
-        null=True,  # 👈 agrega esto
-        blank=True  # 👈 opcional, para el panel admin
+        null=True,
+        blank=True
     )
-
 
     name = models.CharField(max_length=120)
     sku = models.CharField(max_length=64)
@@ -38,3 +36,14 @@ class InventoryItem(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.sku})"
+
+    # 👇 AQUÍ ESTÁ LA MAGIA: Lógica automática al guardar
+    def save(self, *args, **kwargs):
+        # Si la cantidad es 0, forzamos estado 'out'
+        if self.quantity == 0:
+            self.status = 'out'
+        # Opcional: Si vuelve a tener stock y estaba 'out', lo reactivamos
+        elif self.quantity > 0 and self.status == 'out':
+            self.status = 'active'
+            
+        super().save(*args, **kwargs)

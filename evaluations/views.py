@@ -1,15 +1,15 @@
+# evaluations/views.py
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
 from django.db import transaction 
 
-# Importaciones de modelos y serializers
 from .models import Evaluation, EvaluationItem
 from .serializers import EvaluationSerializer, EvaluationItemSerializer
 from orders.models import WorkOrder
-from external.models import ServiceRequest  # 👈 Importante para el módulo B2B
-from accounts.models import Notification    # 👈 NUEVO: Importar modelo de Notificación
+from external.models import ServiceRequest
+from accounts.models import Notification
 from accounts.utils import get_data_owner
 
 class EvaluationViewSet(viewsets.ModelViewSet):
@@ -22,8 +22,6 @@ class EvaluationViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         target_user = get_data_owner(self.request.user)
-        
-        # Validación básica para no duplicar evaluaciones activas
         vehicle = serializer.validated_data.get('vehicle')
         if vehicle:
             active_statuses = ['draft', 'sent', 'approved']
@@ -34,33 +32,29 @@ class EvaluationViewSet(viewsets.ModelViewSet):
             if exists:
                 raise ValidationError({"vehicle": "Este vehículo ya tiene una evaluación en curso."})
         
-        # 👇 MODIFICADO: Guardamos 'owner' como el jefe y 'created_by' como el usuario actual
         serializer.save(owner=target_user, created_by=self.request.user)
 
     @action(detail=True, methods=['post'])
     def update_items(self, request, pk=None):
-        """
-        Recibe la lista de ítems del frontend y los actualiza.
-        Aquí es donde guardamos el vínculo con el servicio externo (externalId).
-        """
         evaluation = self.get_object()
         items_data = request.data.get('items', [])
         
-        # Borramos los ítems viejos para sobrescribir con los nuevos
         EvaluationItem.objects.filter(evaluation=evaluation).delete()
         
         new_items = []
         for item in items_data:
-            # 👇 Capturamos el ID del servicio externo si viene del frontend
             external_id = item.get('externalId') 
+            inventory_id = item.get('inventoryId')
+            qty = item.get('qty', 1)
             
             new_items.append(EvaluationItem(
                 evaluation=evaluation,
                 description=item.get('description'),
                 price=item.get('price', 0),
                 is_approved=item.get('is_approved', True),
-                # 👇 Guardamos la referencia en la base de datos
-                external_service_source_id=external_id 
+                external_service_source_id=external_id,
+                inventory_item_id=inventory_id,
+                quantity=qty
             ))
         
         EvaluationItem.objects.bulk_create(new_items)
@@ -68,12 +62,8 @@ class EvaluationViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def generate_order(self, request, pk=None):
-        """
-        Aprueba la evaluación, crea la Orden de Trabajo y envía las solicitudes B2B.
-        """
         evaluation = self.get_object()
 
-        # 1. Validaciones
         if hasattr(evaluation, 'work_order'):
             return Response({"error": "Ya existe una Orden de Trabajo para esta evaluación."}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -81,14 +71,11 @@ class EvaluationViewSet(viewsets.ModelViewSet):
         if not approved_items.exists():
             return Response({"error": "La evaluación no tiene ítems aprobados."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 2. Proceso Transaccional (Todo o nada)
         try:
             with transaction.atomic():
-                # A. Actualizar estado Evaluación
                 evaluation.status = 'approved'
                 evaluation.save()
 
-                # B. Crear Orden de Trabajo (OT)
                 work_order = WorkOrder.objects.create(
                     evaluation=evaluation,
                     owner=evaluation.owner,
@@ -96,30 +83,37 @@ class EvaluationViewSet(viewsets.ModelViewSet):
                     internal_notes=f"Generada desde Evaluación #{evaluation.id}"
                 )
 
-                # C. Lógica de Externalización (B2B) 
-                # Recorremos los ítems aprobados para ver si alguno es un servicio externo
                 for item in approved_items:
+                    # Lógica Externalización
                     if item.external_service_source:
                         service = item.external_service_source
-                        
-                        # Si tiene un servicio externo vinculado, creamos la solicitud para el otro taller
                         ServiceRequest.objects.create(
-                            requester=evaluation.owner,               # Quien pide (Tu usuario/Ivan)
-                            provider=service.owner,                   # Quien provee (El otro taller/Carlos)
-                            service=service,                          # El servicio específico
-                            related_order_id=work_order.id            # Referencia a la OT
+                            requester=evaluation.owner,
+                            provider=service.owner,
+                            service=service,
+                            related_order_id=work_order.id
+                        )
+                        Notification.objects.create(
+                            recipient=service.owner,
+                            message=f"¡Nueva Solicitud! Taller {evaluation.owner.username} requiere: {service.name}",
+                            link="/requests"
                         )
 
-                        # 👇👇 NUEVO: Crear la Notificación para el Proveedor 👇👇
-                        Notification.objects.create(
-                            recipient=service.owner, # El dueño del servicio externo (Carlos)
-                            message=f"¡Nueva Solicitud! Taller {evaluation.owner.username} requiere: {service.name}",
-                            link="/requests" # Para que al hacer clic vaya a la bandeja de entrada
-                        )
-                        # 👆👆 FIN DE LO NUEVO 👆👆
+                    # Lógica Inventario (SIMPLIFICADA)
+                    if item.inventory_item:
+                        prod = item.inventory_item
+                        
+                        if prod.quantity >= item.quantity:
+                            prod.quantity -= item.quantity
+                        else:
+                            prod.quantity = 0 
+                        
+                        # Al llamar a save(), el modelo InventoryItem aplicará su propia lógica
+                        # para cambiar el estado a 'out' si quantity es 0.
+                        prod.save()
 
             return Response({
-                "message": "Orden creada y solicitudes enviadas correctamente", 
+                "message": "Orden creada, solicitudes enviadas y stock actualizado.", 
                 "order_id": work_order.id
             }, status=status.HTTP_201_CREATED)
 
