@@ -27,7 +27,7 @@ class EvaluationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Evaluation
         fields = [
-            'id', 'status', 'notes', 'created_at', 
+            'id', 'folio', 'status', 'notes', 'created_at', 
             'client', 'vehicle',
             'client_data', 'vehicle_data',
             'items', 
