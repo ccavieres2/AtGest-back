@@ -11,7 +11,7 @@ class WorkOrderSerializer(serializers.ModelSerializer):
     class Meta:
         model = WorkOrder
         fields = [
-            'id', 'evaluation', 'evaluation_data', 'owner', 
+            'id', 'folio', 'evaluation', 'evaluation_data', 'owner', 
             'mechanic', 'mechanic_name', 'status', 
             'start_date', 'end_date', 'internal_notes', 
             'created_at'

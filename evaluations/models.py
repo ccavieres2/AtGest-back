@@ -1,9 +1,10 @@
 # evaluations/models.py
 from django.db import models
 from django.conf import settings
+from django.db.models import Max  # 👈 IMPORTANTE: Importamos Max para calcular el folio
 from clients.models import Client, Vehicle
 from external.models import ExternalService
-from inventory.models import InventoryItem  # 👈 Importamos el modelo de inventario
+from inventory.models import InventoryItem
 
 class Evaluation(models.Model):
     STATUS_CHOICES = [
@@ -30,12 +31,28 @@ class Evaluation(models.Model):
     
     # Datos
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+    
+    # 👇 NUEVO CAMPO: Folio único por taller
+    folio = models.PositiveIntegerField(editable=False, null=True, blank=True, verbose_name="Folio")
+    
     notes = models.TextField(blank=True, verbose_name="Observaciones generales")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # 👇 LÓGICA DE FOLIOS
+    def save(self, *args, **kwargs):
+        # Si no tiene folio asignado, lo calculamos
+        if not self.folio:
+            # Buscamos el folio más alto SOLO de este dueño (owner)
+            max_folio = Evaluation.objects.filter(owner=self.owner).aggregate(Max('folio'))['folio__max']
+            # Si no hay, empezamos en 1. Si hay, sumamos 1.
+            self.folio = (max_folio or 0) + 1
+            
+        super().save(*args, **kwargs)
+
     def __str__(self):
-        return f"Eval #{self.id} - {self.vehicle}"
+        # Mostramos el Folio en lugar del ID
+        return f"Eval #{self.folio} - {self.vehicle}"
 
 class EvaluationItem(models.Model):
     evaluation = models.ForeignKey(Evaluation, on_delete=models.CASCADE, related_name="items")
@@ -54,7 +71,7 @@ class EvaluationItem(models.Model):
         related_name="linked_items"
     )
 
-    # 👇 NUEVOS CAMPOS PARA INVENTARIO
+    # Campos para inventario
     inventory_item = models.ForeignKey(
         InventoryItem, 
         on_delete=models.SET_NULL, 
