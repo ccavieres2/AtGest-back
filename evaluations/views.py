@@ -18,7 +18,7 @@ class EvaluationViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         target_user = get_data_owner(self.request.user)
-        return Evaluation.objects.filter(owner=target_user).order_by('-created_at')
+        return Evaluation.objects.filter(owner=target_user).order_by('-folio')
 
     def perform_create(self, serializer):
         target_user = get_data_owner(self.request.user)
@@ -79,12 +79,12 @@ class EvaluationViewSet(viewsets.ModelViewSet):
                 work_order = WorkOrder.objects.create(
                     evaluation=evaluation,
                     owner=evaluation.owner,
+                    folio=evaluation.folio,
                     status='pending',
-                    internal_notes=f"Generada desde Evaluación #{evaluation.id}"
+                    internal_notes=f"Generada desde Evaluación #{evaluation.folio}"
                 )
 
                 for item in approved_items:
-                    # Lógica Externalización
                     if item.external_service_source:
                         service = item.external_service_source
                         ServiceRequest.objects.create(
@@ -99,24 +99,20 @@ class EvaluationViewSet(viewsets.ModelViewSet):
                             link="/requests"
                         )
 
-                    # Lógica Inventario (SIMPLIFICADA)
                     if item.inventory_item:
                         prod = item.inventory_item
-                        
                         if prod.quantity >= item.quantity:
                             prod.quantity -= item.quantity
                         else:
                             prod.quantity = 0 
-                        
-                        # Al llamar a save(), el modelo InventoryItem aplicará su propia lógica
-                        # para cambiar el estado a 'out' si quantity es 0.
                         prod.save()
 
             return Response({
-                "message": "Orden creada, solicitudes enviadas y stock actualizado.", 
-                "order_id": work_order.id
+                "message": "Orden creada exitosamente.", 
+                "order_id": work_order.id,
+                "order_folio": work_order.folio # 👈 AGREGAMOS ESTO PARA EL FRONTEND
             }, status=status.HTTP_201_CREATED)
 
         except Exception as e:
-            print(f"ERROR GENERANDO ORDEN: {e}")
+            print(f"ERROR: {e}")
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

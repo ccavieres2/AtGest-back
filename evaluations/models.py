@@ -1,7 +1,7 @@
 # evaluations/models.py
 from django.db import models
 from django.conf import settings
-from django.db.models import Max  # 👈 IMPORTANTE: Importamos Max para calcular el folio
+from django.db.models import Max  # Se mantiene por si necesitas Max en otro lado, aunque ya no es crítico para el folio
 from clients.models import Client, Vehicle
 from external.models import ExternalService
 from inventory.models import InventoryItem
@@ -32,26 +32,39 @@ class Evaluation(models.Model):
     # Datos
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
     
-    # 👇 NUEVO CAMPO: Folio único por taller
+    # Folio único por taller (editable=False para que no se toque en admin directamente)
     folio = models.PositiveIntegerField(editable=False, null=True, blank=True, verbose_name="Folio")
     
     notes = models.TextField(blank=True, verbose_name="Observaciones generales")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    # 👇 LÓGICA DE FOLIOS
+    # 👇 LÓGICA DE FOLIOS MEJORADA (RELLENO DE HUECOS)
     def save(self, *args, **kwargs):
-        # Si no tiene folio asignado, lo calculamos
+        # Solo calculamos si no tiene folio asignado (es nuevo)
         if not self.folio:
-            # Buscamos el folio más alto SOLO de este dueño (owner)
-            max_folio = Evaluation.objects.filter(owner=self.owner).aggregate(Max('folio'))['folio__max']
-            # Si no hay, empezamos en 1. Si hay, sumamos 1.
-            self.folio = (max_folio or 0) + 1
+            # 1. Obtenemos todos los folios existentes de este dueño, ordenados de menor a mayor
+            # values_list devuelve solo los números: [1, 2, 4, 5...]
+            existing_folios = Evaluation.objects.filter(owner=self.owner).values_list('folio', flat=True).order_by('folio')
+            
+            # 2. Algoritmo para encontrar el primer número libre
+            next_folio = 1
+            for folio in existing_folios:
+                if folio == next_folio:
+                    # Si el número existe en la BD, pasamos al siguiente esperado
+                    next_folio += 1
+                else:
+                    # Si el número en la BD es mayor al esperado (ej: esperamos 3 pero viene 4),
+                    # significa que el 3 está libre. Rompemos el ciclo y usamos next_folio (3).
+                    break
+            
+            # Asignamos el número encontrado (sea un hueco intermedio o el siguiente al final)
+            self.folio = next_folio
             
         super().save(*args, **kwargs)
 
     def __str__(self):
-        # Mostramos el Folio en lugar del ID
+        # Mostramos el Folio en lugar del ID para consistencia visual
         return f"Eval #{self.folio} - {self.vehicle}"
 
 class EvaluationItem(models.Model):
@@ -62,7 +75,7 @@ class EvaluationItem(models.Model):
     # Si el cliente aprueba este ítem
     is_approved = models.BooleanField(default=True, verbose_name="Aprobado por cliente")
     
-    # Vinculación con servicio externo
+    # Vinculación con servicio externo (Integración External)
     external_service_source = models.ForeignKey(
         ExternalService, 
         on_delete=models.SET_NULL, 
@@ -71,7 +84,7 @@ class EvaluationItem(models.Model):
         related_name="linked_items"
     )
 
-    # Campos para inventario
+    # Vinculación con inventario (Integración Inventory)
     inventory_item = models.ForeignKey(
         InventoryItem, 
         on_delete=models.SET_NULL, 
@@ -79,6 +92,7 @@ class EvaluationItem(models.Model):
         blank=True,
         related_name="evaluation_items"
     )
+    # Cantidad para descontar del stock o calcular precio
     quantity = models.PositiveIntegerField(default=1, verbose_name="Cantidad")
 
     def __str__(self):

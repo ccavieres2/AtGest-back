@@ -25,6 +25,16 @@ class WorkOrderViewSet(viewsets.ModelViewSet):
         target_user = get_data_owner(self.request.user)
         serializer.save(owner=target_user)
 
+    # 👇 NUEVA IMPLEMENTACIÓN: Guardar quién cambió el estado
+    def perform_update(self, serializer):
+        # Verificamos si en los datos que llegan viene el campo 'status'
+        if 'status' in self.request.data:
+            # Si se está actualizando el estado, guardamos el usuario actual
+            serializer.save(last_status_change_by=self.request.user)
+        else:
+            # Si es otra actualización (ej: notas internas), guardamos normal
+            serializer.save()
+
 class DashboardStatsView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -113,9 +123,8 @@ class DashboardStatsView(APIView):
                 "rejected_evals": rejected_evals,
                 "low_stock": low_stock,
                 "total_clients": total_clients,
-                "total_vehicles": total_vehicles # 👈 Dato nuevo enviado
+                "total_vehicles": total_vehicles
             },
             "pie_data": list(orders_by_status),
             "bar_data": revenue_chart_data
         })
-        

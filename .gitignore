@@ -7,7 +7,6 @@ __pycache__/
 # Archivos de entorno
 venv/
 env/
-.env
 
 # Archivos de base de datos y migraciones automáticas (opcional)
 *.sqlite3

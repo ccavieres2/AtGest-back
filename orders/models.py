@@ -14,7 +14,20 @@ class WorkOrder(models.Model):
     evaluation = models.OneToOneField(Evaluation, on_delete=models.CASCADE, related_name='work_order')
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="work_orders")
     mechanic = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="assigned_orders")
+    
+    # 👇 ESTE CAMPO ES CLAVE PARA COMPARTIR EL NÚMERO
+    folio = models.PositiveIntegerField(null=True, blank=True, verbose_name="Folio")
+
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    
+    last_status_change_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name="status_changes"
+    )
+    
     start_date = models.DateTimeField(null=True, blank=True)
     end_date = models.DateTimeField(null=True, blank=True)
     internal_notes = models.TextField(blank=True, verbose_name="Notas para mecánico")
@@ -22,4 +35,5 @@ class WorkOrder(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"OT #{self.id} - {self.evaluation.vehicle}"
+        # Usamos el Folio para la representación en texto
+        return f"OT #{self.folio} - {self.evaluation.vehicle}"
