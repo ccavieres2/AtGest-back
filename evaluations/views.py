@@ -11,6 +11,8 @@ from orders.models import WorkOrder
 from external.models import ServiceRequest
 from accounts.models import Notification
 from accounts.utils import get_data_owner
+# Importamos Product para la validación de stock
+from inventory.models import Product
 
 class EvaluationViewSet(viewsets.ModelViewSet):
     serializer_class = EvaluationSerializer
@@ -39,6 +41,7 @@ class EvaluationViewSet(viewsets.ModelViewSet):
         evaluation = self.get_object()
         items_data = request.data.get('items', [])
         
+        # Borramos los ítems anteriores para reescribirlos
         EvaluationItem.objects.filter(evaluation=evaluation).delete()
         
         new_items = []
@@ -73,9 +76,11 @@ class EvaluationViewSet(viewsets.ModelViewSet):
 
         try:
             with transaction.atomic():
+                # 1. Cambiar estado a aprobado
                 evaluation.status = 'approved'
                 evaluation.save()
 
+                # 2. Crear la Orden de Trabajo
                 work_order = WorkOrder.objects.create(
                     evaluation=evaluation,
                     owner=evaluation.owner,
@@ -84,7 +89,9 @@ class EvaluationViewSet(viewsets.ModelViewSet):
                     internal_notes=f"Generada desde Evaluación #{evaluation.folio}"
                 )
 
+                # 3. Procesar los ítems
                 for item in approved_items:
+                    # A) Solicitudes Externas
                     if item.external_service_source:
                         service = item.external_service_source
                         ServiceRequest.objects.create(
@@ -99,18 +106,36 @@ class EvaluationViewSet(viewsets.ModelViewSet):
                             link="/requests"
                         )
 
+                    # B) Descuento de Inventario (Lógica FIFO por Lotes)
                     if item.inventory_item:
-                        prod = item.inventory_item
-                        if prod.quantity >= item.quantity:
-                            prod.quantity -= item.quantity
-                        else:
-                            prod.quantity = 0 
-                        prod.save()
+                        product_ref = item.inventory_item # Esto es un Product
+                        qty_needed = item.quantity
+                        
+                        # Buscamos lotes con stock > 0, ordenados por vencimiento (el más viejo primero)
+                        batches = product_ref.batches.filter(current_quantity__gt=0).order_by('expiration_date', 'entry_date')
+                        
+                        for batch in batches:
+                            if qty_needed <= 0:
+                                break
+                            
+                            if batch.current_quantity >= qty_needed:
+                                # El lote alcanza para cubrir todo lo que falta
+                                batch.current_quantity -= qty_needed
+                                batch.save()
+                                qty_needed = 0
+                            else:
+                                # El lote se agota, tomamos todo lo que tiene y seguimos buscando
+                                qty_needed -= batch.current_quantity
+                                batch.current_quantity = 0
+                                batch.save()
+                        
+                        if qty_needed > 0:
+                            print(f"ALERTA: Stock insuficiente para {product_ref.name}. Faltaron {qty_needed} unidades.")
 
             return Response({
                 "message": "Orden creada exitosamente.", 
                 "order_id": work_order.id,
-                "order_folio": work_order.folio # 👈 AGREGAMOS ESTO PARA EL FRONTEND
+                "order_folio": work_order.folio
             }, status=status.HTTP_201_CREATED)
 
         except Exception as e:

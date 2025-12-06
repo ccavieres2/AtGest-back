@@ -15,8 +15,6 @@ class EvaluationSerializer(serializers.ModelSerializer):
     client_data = ClientSerializer(source='client', read_only=True)
     vehicle_data = VehicleSerializer(source='vehicle', read_only=True)
     items = EvaluationItemSerializer(many=True, read_only=True)
-    
-    # 👇 CAMBIO: Usamos SerializerMethodField para evitar errores si created_by es None
     created_by_name = serializers.SerializerMethodField()
 
     class Meta:
@@ -29,7 +27,6 @@ class EvaluationSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['owner', 'created_at', 'created_by', 'folio']
 
-    # 👇 Método seguro: Si no hay creador, devuelve "Sistema" o "Desconocido"
     def get_created_by_name(self, obj):
         if obj.created_by:
             return obj.created_by.username

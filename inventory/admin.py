@@ -1,15 +1,26 @@
-# core/admin.py
+# inventory/admin.py
 from django.contrib import admin
-from .models import InventoryItem
+from .models import Product, InventoryBatch
 
-@admin.register(InventoryItem)
-class InventoryItemAdmin(admin.ModelAdmin):
-    list_display = ("name", "sku", "quantity", "price", "status", "category", "owner")
-    search_fields = ("name", "sku", "category", "owner__username")
-    list_filter = ("status", "category")
+class InventoryBatchInline(admin.TabularInline):
+    model = InventoryBatch
+    extra = 0
+    readonly_fields = ('current_quantity', 'created_at')
+    can_delete = False
 
-    def get_queryset(self, request):
-        qs = super().get_queryset(request)
-        if request.user.is_superuser:
-            return qs
-        return qs.filter(owner=request.user)
+@admin.register(Product)
+class ProductAdmin(admin.ModelAdmin):
+    list_display = ("name", "sku", "total_stock", "category", "owner")
+    search_fields = ("name", "sku", "owner__username")
+    list_filter = ("category",)
+    inlines = [InventoryBatchInline] # Permite ver los lotes dentro del producto
+
+    # Mostramos el stock total calculado
+    def total_stock(self, obj):
+        return obj.total_stock
+    total_stock.short_description = "Stock Total"
+
+@admin.register(InventoryBatch)
+class InventoryBatchAdmin(admin.ModelAdmin):
+    list_display = ("product", "initial_quantity", "current_quantity", "entry_date", "expiration_date")
+    list_filter = ("entry_date", "expiration_date")

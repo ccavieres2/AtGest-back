@@ -1,49 +1,73 @@
-# inventory/models.py
+## inventory/models.py
 from django.db import models
 from django.conf import settings
+from django.db.models import Sum
+from django.utils import timezone
 
-class InventoryItem(models.Model):
-    STATUS_CHOICES = [
-        ("active", "Activo"),
-        ("inactive", "Inactivo"),
-        ("out", "Sin stock"),
-    ]
-
+# --- TABLA 1: PRODUCTO (El Catálogo - Qué es) ---
+class Product(models.Model):
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        related_name="inventory_items",
-        null=True,
-        blank=True
+        related_name="products"
     )
-
-    name = models.CharField(max_length=120)
-    sku = models.CharField(max_length=64)
-    quantity = models.PositiveIntegerField(default=0)
-    price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    name = models.CharField(max_length=120, verbose_name="Nombre Producto")
+    sku = models.CharField(max_length=64, verbose_name="Código SKU")
+    description = models.TextField(blank=True, verbose_name="Descripción")
     category = models.CharField(max_length=80, blank=True)
-    location = models.CharField(max_length=80, blank=True)
-    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default="active")
+    location = models.CharField(max_length=80, blank=True, verbose_name="Ubicación")
+    
+    # Precio de venta al público (sugerido)
+    sale_price = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name="Precio Venta")
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ["-created_at"]
+        # Evita duplicar el mismo código SKU en el taller
         constraints = [
-            models.UniqueConstraint(fields=["owner", "sku"], name="unique_sku_per_owner")
+            models.UniqueConstraint(fields=["owner", "sku"], name="unique_product_sku_per_owner")
         ]
+        ordering = ["name"]
 
     def __str__(self):
         return f"{self.name} ({self.sku})"
 
-    # 👇 AQUÍ ESTÁ LA MAGIA: Lógica automática al guardar
+    # Propiedad para obtener el stock total sumando los lotes
+    @property
+    def total_stock(self):
+        # Suma la columna 'current_quantity' de todos los lotes asociados
+        return self.batches.aggregate(total=Sum('current_quantity'))['total'] or 0
+
+
+# --- TABLA 2: LOTE DE INVENTARIO (Las Existencias - Cuántos hay y cuándo vencen) ---
+class InventoryBatch(models.Model):
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="batches")
+    
+    # Cantidad inicial que entró
+    initial_quantity = models.PositiveIntegerField(verbose_name="Cantidad Entrada")
+    
+    # Cantidad que queda actualmente (se reduce con las salidas)
+    current_quantity = models.PositiveIntegerField(verbose_name="Stock Actual")
+    
+    # Costo al que compraste este lote
+    unit_cost = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name="Costo Compra")
+    
+    # Fechas solicitadas por tu profesora
+    entry_date = models.DateField(default=timezone.now, verbose_name="Fecha de Ingreso")
+    expiration_date = models.DateField(null=True, blank=True, verbose_name="Fecha de Vencimiento")
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        # Ordenar para que salgan primero los que vencen antes (FIFO)
+        ordering = ['expiration_date', 'entry_date']
+
+    def __str__(self):
+        return f"Lote {self.id} - {self.product.name}"
+
     def save(self, *args, **kwargs):
-        # Si la cantidad es 0, forzamos estado 'out'
-        if self.quantity == 0:
-            self.status = 'out'
-        # Opcional: Si vuelve a tener stock y estaba 'out', lo reactivamos
-        elif self.quantity > 0 and self.status == 'out':
-            self.status = 'active'
-            
+        # Al crear, si no se especifica stock actual, es igual al inicial
+        if self.current_quantity is None:
+            self.current_quantity = self.initial_quantity
         super().save(*args, **kwargs)

@@ -1,22 +1,26 @@
 # inventory/serializers.py
 from rest_framework import serializers
-from .models import InventoryItem
+from .models import Product, InventoryBatch
 
-class InventoryItemSerializer(serializers.ModelSerializer):
+class InventoryBatchSerializer(serializers.ModelSerializer):
     class Meta:
-        model = InventoryItem
+        model = InventoryBatch
         fields = [
-            "id", "name", "sku", "quantity", "price",
-            "category", "location", "status",
-            "created_at", "updated_at",
+            'id', 'product', 'initial_quantity', 'current_quantity', 
+            'unit_cost', 'entry_date', 'expiration_date', 'created_at'
         ]
-        # Agregamos 'owner' a read_only para que no se pida en el formulario
-        read_only_fields = ("id", "created_at", "updated_at", "owner")
+        # Permitimos editar TODO menos la fecha de creación
+        read_only_fields = ['created_at']
 
-    # 👇 ELIMINAMOS el método 'create' personalizado. 
-    # Dejamos que la vista (InventoryItemViewSet.perform_create) se encargue del dueño.
-    
-    def update(self, instance, validated_data):
-        # Evita que cambien el owner manualmente
-        validated_data.pop("owner", None)
-        return super().update(instance, validated_data)
+class ProductSerializer(serializers.ModelSerializer):
+    stock_actual = serializers.IntegerField(source='total_stock', read_only=True)
+
+    class Meta:
+        model = Product
+        fields = [
+            'id', 'name', 'sku', 'description', 
+            'category', 'location', 'sale_price', 
+            'stock_actual', 
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'owner', 'created_at', 'updated_at']
