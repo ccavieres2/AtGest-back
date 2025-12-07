@@ -144,14 +144,16 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # --- CORS/CSRF (ajusta a tus orígenes del front) ---
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
+    "http://localhost:5173",          # Para cuando pruebas en tu PC
     "http://127.0.0.1:5173",
+    "https://atgest-b3b09.web.app",   # <--- ¡AGREGA ESTA NUEVA LÍNEA!
 ]
+
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    "https://atgest-b3b09.web.app",   # <--- Y ESTA TAMBIÉN POR SI ACASO
 ]
-
 # --- DRF básico ---
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
